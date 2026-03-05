@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>芯片引脚提取工具 - 完整版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #007aff;
+            --primary-hover: #0056cc;
+            --background-color: #f5f5f7;
+            --card-background: #ffffff;
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            --border-color: #d2d2d7;
+            --success-color: #34c759;
+            --warning-color: #ff9500;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+            --shadow-hover: 0 8px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 21px;
+            color: var(--text-secondary);
+        }
+
+        .version-badge {
+            display: inline-block;
+            background: var(--success-color);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .card {
+            background: var(--card-background);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow);
+        }
+
+        h2 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .config-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .config-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .config-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-top: 2px;
+            accent-color: var(--primary-color);
+            cursor: pointer;
+        }
+
+        .config-item label {
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .config-item small {
+            display: block;
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background-color: var(--card-background);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            font-family: inherit;
+        }
+
+        input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+        }
+
+        textarea {
+            min-height: 150px;
+            resize: vertical;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 50px 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background-color: var(--card-background);
+        }
+
+        .drop-zone:hover {
+            border-color: var(--primary-color);
+            background-color: rgba(0, 122, 255, 0.02);
+        }
+
+        .drop-zone.active {
+            border-color: var(--primary-color);
+            background-color: rgba(0, 122, 255, 0.05);
+        }
+
+        .drop-zone p {
+            font-size: 17px;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+
+        .drop-zone input[type="file"] {
+            display: none;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            font-size: 15px;
+            font-weight: 500;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 122, 255, 0.3);
+        }
+
+        .btn-secondary {
+            background-color: var(--card-background);
+            color: var(--primary-color);
+            border: 1px solid var(--primary-color);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .progress-section {
+            margin-top: 20px;
+            padding: 20px;
+            background-color: rgba(0, 122, 255, 0.05);
+            border-radius: 8px;
+            display: none;
+        }
+
+        .progress-item {
+            font-size: 14px;
+            color: var(--primary-color);
+            font-weight: 500;
+            margin: 8px 0;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: var(--border-color);
+            border-radius: 4px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background-color: var(--primary-color);
+            transition: width 0.3s ease;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: var(--card-background);
+        }
+
+        th {
+            background-color: var(--background-color);
+            padding: 14px 16px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px;
+        }
+
+        tr:hover {
+            background-color: rgba(0, 122, 255, 0.02);
+        }
+
+        td input, td select {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 14px;
+            width: 100%;
+            background-color: var(--card-background);
+        }
+
+        td input:focus, td select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.1);
+        }
+
+        .info-box {
+            background-color: rgba(52, 199, 89, 0.1);
+            border-left: 4px solid var(--success-color);
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .info-box strong {
+            color: var(--text-primary);
+            font-weight: 600;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .info-box ul {
+            margin-left: 20px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .warning-box {
+            background-color: rgba(255, 149, 0, 0.1);
+            border-left: 4px solid var(--warning-color);
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 60px;
+            padding: 20px;
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 32px; }
+            .subtitle { font-size: 17px; }
+            .card { padding: 20px; }
+            .button-group { flex-direction: column; }
+            .btn { width: 100%; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>芯片引脚提取工具</h1>
+            <p class="subtitle">Chip Pin Extractor - 完整版（支持 PDF/图片识别）</p>
+            <span class="version-badge">✨ 完整功能版</span>
+        </header>
+
+        <div class="card">
+            <h2>数据输入</h2>
+            
+            <div class="info-box">
+                <strong>💡 完整版功能</strong>
+                <ul>
+                    <li>✅ 支持 PDF 文件识别（自动提取文本）</li>
+                    <li>✅ 支持图片 OCR 识别（JPG/PNG）</li>
+                    <li>✅ 支持粘贴数据（多种格式）</li>
+                    <li>✅ 自动排列引脚位置</li>
+                    <li>✅ 导出 Excel 表格</li>
+                </ul>
+            </div>
+
+            <div class="warning-box">
+                <strong>⚠️ 首次使用提示</strong>
+                <p>PDF 和图片识别需要加载外部库（约 10-20MB），首次使用可能需要等待 10-30 秒加载。</p>
+            </div>
+
+            <div class="config-section">
+                <div class="config-item">
+                    <input type="checkbox" id="autoArrange" checked>
+                    <div>
+                        <label for="autoArrange">自动排列引脚位置</label>
+                        <small>根据引脚总数自动分配 TOP/BOTTOM/LEFT/RIGHT</small>
+                    </div>
+                </div>
+
+                <div class="config-item">
+                    <input type="checkbox" id="reverseBottomTop">
+                    <div>
+                        <label for="reverseBottomTop">BOTTOM 和 TOP 边降序</label>
+                        <small>符合逆时针编号规则</small>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label for="pdfPageRange">PDF 页码范围（可选）</label>
+                <input type="text" id="pdfPageRange" placeholder="例如：1-3,5">
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label for="pastedPinData">粘贴引脚数据（支持跨行识别）</label>
+                <textarea id="pastedPinData" placeholder="示例格式：
+1 VCC
+2 GND
+3 GPIO
+
+或跨行格式：
+SD2/SPDIF2/TCON[1]/G
+PIO/IrDA 25"></textarea>
+            </div>
+
+            <div class="drop-zone" id="dropZone">
+                <p>📁 拖拽文件到这里，或点击选择文件</p>
+                <p style="font-size: 14px; color: var(--text-secondary);">支持 PDF、JPG、JPEG、PNG 格式</p>
+                <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png" multiple>
+            </div>
+
+            <div id="progressSection" class="progress-section">
+                <div id="progressText" class="progress-item"></div>
+                <div class="progress-bar">
+                    <div id="progressBarFill" class="progress-bar-fill" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-primary" id="extractBtn">✨ 提取引脚信息</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>引脚信息</h2>
+            <div class="table-container">
+                <table id="pinTable">
+                    <thead>
+                        <tr>
+                            <th>Number</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Visible</th>
+                            <th>Shape</th>
+                            <th>PinGroup</th>
+                            <th>Position</th>
+                            <th>Section</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-secondary" id="sortBtn">🔢 智能排序</button>
+                <button class="btn btn-primary" id="exportBtn">📊 导出 Excel</button>
+            </div>
+        </div>
+
+        <footer>
+            <p>Chip Pin Extractor - 芯片引脚信息智能提取工具（完整版）</p>
+            <p style="margin-top: 8px;">支持 PDF/图片/OCR识别 · 自动排列 · Excel 导出</p>
+        </footer>
+    </div>
+
+    <script>
+        // 全局变量
+        let pinData = [];
+        let chipInfo = { totalPins: 0 };
+        let isLibraryLoaded = false;
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('extractBtn').addEventListener('click', extractPinInfo);
+            document.getElementById('sortBtn').addEventListener('click', smartSortPins);
+            document.getElementById('exportBtn').addEventListener('click', exportToExcel);
+            initDragAndDrop();
+
+            ['autoArrange', 'reverseBottomTop'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('change', () => {
+                        if (pinData.length > 0) reapplyPositionAllocation();
+                    });
+                }
+            });
+        });
+
+        // 显示进度
+        function showProgress(text, percent) {
+            const progressSection = document.getElementById('progressSection');
+            const progressText = document.getElementById('progressText');
+            const progressBarFill = document.getElementById('progressBarFill');
+            
+            progressSection.style.display = 'block';
+            progressText.textContent = text;
+            progressBarFill.style.width = percent + '%';
+        }
+
+        function hideProgress() {
+            document.getElementById('progressSection').style.display = 'none';
+        }
+
+        // 拖拽功能
+        function initDragAndDrop() {
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('fileInput');
+
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('active');
+            });
+
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('active');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('active');
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                }
+            });
+
+            dropZone.addEventListener('click', () => fileInput.click());
+        }
+
+        // 从 PDF 提取文本
+        async function extractTextFromPDF(file, pageRange) {
+            showProgress('正在加载 PDF 库...', 10);
+            
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            
+            let text = '';
+            const pagesToProcess = pageRange.length > 0 ? pageRange : Array.from({length: pdf.numPages}, (_, i) => i + 1);
+            const totalPages = pagesToProcess.length;
+            
+            for (let i = 0; i < pagesToProcess.length; i++) {
+                const pageNum = pagesToProcess[i];
+                if (pageNum < 1 || pageNum > pdf.numPages) continue;
+                
+                showProgress(`正在处理 PDF 第 ${pageNum} 页...`, 10 + (i / totalPages) * 40);
+                
+                const page = await pdf.getPage(pageNum);
+                const content = await page.getTextContent();
+                const pageText = content.items.map(item => item.str).join(' ');
+                text += pageText + '\n';
+            }
+            
+            return text;
+        }
+
+        // 从图片 OCR 提取文本
+        async function extractTextFromImage(imageUrl) {
+            showProgress('正在加载 OCR 库...', 50);
+            
+            const result = await Tesseract.recognize(
+                imageUrl,
+                'eng+chi_sim',
+                {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            showProgress(`OCR 识别中... ${Math.round(m.progress * 100)}%`, 50 + m.progress * 40);
+                        }
+                    }
+                }
+            );
+            
+            return result.data.text;
+        }
+
+        // 从粘贴文本提取引脚
+        function extractPinDataFromPastedText(text) {
+            const pins = [];
+            const seenNumbers = new Set();
+            const lines = text.split('\n').filter(l => l.trim().length > 0);
+            let pendingLine = '';
+
+            for (let i = 0; i < lines.length; i++) {
+                let trimmedLine = lines[i].trim();
+                if (pendingLine) {
+                    trimmedLine = pendingLine + ' ' + trimmedLine;
+                    pendingLine = '';
+                }
+
+                if (trimmedLine.length < 2) continue;
+
+                const parts = trimmedLine.split(/\s+/).filter(p => p.length > 0);
+                if (parts.length >= 2) {
+                    let pinNumber = '', pinName = '';
+                    const firstPart = parts[0];
+                    const secondPart = parts[1];
+                    const firstHasDigit = /\d/.test(firstPart);
+                    const secondHasDigit = /\d/.test(secondPart);
+                    const startsWithSlash = firstPart.startsWith('/');
+
+                    if (startsWithSlash && parts.length >= 3) {
+                        for (let j = 1; j < parts.length; j++) {
+                            if (/\d/.test(parts[j])) {
+                                pinNumber = parts[j];
+                                pinName = parts.slice(0, j).join('') + parts.slice(j + 1).join('');
+                                break;
+                            }
+                        }
+                    } else if (firstHasDigit && !secondHasDigit) {
+                        pinNumber = firstPart;
+                        pinName = parts.slice(1).join(' ');
+                    } else if (!firstHasDigit && secondHasDigit) {
+                        pinName = firstPart;
+                        pinNumber = secondPart;
+                    } else if (firstHasDigit && secondHasDigit) {
+                        pinNumber = firstPart;
+                        pinName = parts.slice(1).join(' ');
+                    }
+
+                    if (pinName && (pinName.endsWith('/') || (pinName.includes('[') && !pinName.includes(']')))) {
+                        pendingLine = trimmedLine;
+                        continue;
+                    }
+
+                    if (pinName && pinNumber && !seenNumbers.has(pinNumber)) {
+                        seenNumbers.add(pinNumber);
+                        pins.push({
+                            Number: pinNumber,
+                            Name: pinName,
+                            Type: 'Passive',
+                            Visible: 'TRUE',
+                            Shape: 'Line',
+                            PinGroup: '',
+                            Position: '',
+                            Section: 'A'
+                        });
+                    }
+                }
+            }
+
+            return pins;
+        }
+
+        // 智能排序
+        function smartSortPins() {
+            if (pinData.length === 0) {
+                alert('没有数据可排序');
+                return;
+            }
+            pinData.sort((a, b) => {
+                return a.Number.toString().localeCompare(b.Number.toString(), 'en', {
+                    numeric: true,
+                    sensitivity: 'base'
+                });
+            });
+            displayPinData();
+            alert('数据已按自然顺序排序！');
+        }
+
+        // 重新应用位置分配
+        function reapplyPositionAllocation() {
+            if (pinData.length === 0) return;
+
+            const autoArrange = document.getElementById('autoArrange')?.checked !== false;
+            const reverseBottomTop = document.getElementById('reverseBottomTop')?.checked || false;
+            const totalPins = chipInfo.totalPins || Math.max(...pinData.map(p => {
+                const match = p.Number.match(/\d+/);
+                return match ? parseInt(match[0]) : 0;
+            }));
+            const quarter = Math.ceil(totalPins / 4);
+
+            pinData.forEach(pin => {
+                const pinNumber = parseInt(pin.Number.match(/\d+/)?.[0] || '0');
+                if (autoArrange && pinNumber > 0) {
+                    const pinInPackage = ((pinNumber - 1) % totalPins + totalPins) % totalPins + 1;
+                    if (pinInPackage >= 1 && pinInPackage <= quarter) {
+                        pin.Position = 'LEFT';
+                    } else if (pinInPackage > quarter && pinInPackage <= quarter * 2) {
+                        pin.Position = reverseBottomTop ? 'BOTTOM_REV' : 'BOTTOM';
+                    } else if (pinInPackage > quarter * 2 && pinInPackage <= quarter * 3) {
+                        pin.Position = 'RIGHT';
+                    } else if (pinInPackage > quarter * 3 && pinInPackage <= totalPins) {
+                        pin.Position = reverseBottomTop ? 'TOP_REV' : 'TOP';
+                    } else {
+                        pin.Position = '';
+                    }
+                } else {
+                    pin.Position = '';
+                }
+            });
+
+            displayPinData();
+        }
+
+        // 提取引脚信息主函数
+        async function extractPinInfo() {
+            const fileInput = document.getElementById('fileInput');
+            const files = fileInput.files;
+            const pastedPinData = document.getElementById('pastedPinData')?.value.trim() || '';
+            const pdfPageRange = document.getElementById('pdfPageRange').value;
+
+            if (files.length === 0 && pastedPinData === '') {
+                alert('请先选择文件或粘贴引脚数据');
+                return;
+            }
+
+            try {
+                let extractedText = '';
+
+                // 处理文件
+                if (files.length > 0) {
+                    for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+                        const fileExtension = file.name.split('.').pop().toLowerCase();
+
+                        if (fileExtension === 'pdf') {
+                            const pageRange = parsePageRange(pdfPageRange);
+                            const pdfText = await extractTextFromPDF(file, pageRange);
+                            extractedText += pdfText + '\n';
+                        } else if (['jpg', 'jpeg', 'png'].includes(fileExtension)) {
+                            const imageUrl = URL.createObjectURL(file);
+                            const imageText = await extractTextFromImage(imageUrl);
+                            extractedText += imageText + '\n';
+                            URL.revokeObjectURL(imageUrl);
+                        }
+                    }
+                }
+
+                // 处理粘贴的数据
+                if (pastedPinData) {
+                    extractedText += pastedPinData;
+                }
+
+                showProgress('正在解析引脚信息...', 95);
+
+                // 提取引脚数据
+                const pastedPins = extractPinDataFromPastedText(extractedText);
+
+                if (pastedPins.length === 0) {
+                    hideProgress();
+                    alert('未能识别到引脚数据，请检查文件格式或粘贴内容');
+                    return;
+                }
+
+                const maxPinNum = Math.max(...pastedPins.map(p => {
+                    const match = p.Number.match(/\d+/);
+                    return match ? parseInt(match[0]) : 0;
+                }));
+                chipInfo.totalPins = maxPinNum || pastedPins.length;
+                pinData = pastedPins;
+
+                const autoArrange = document.getElementById('autoArrange')?.checked !== false;
+                if (autoArrange && pinData.length > 0) {
+                    reapplyPositionAllocation();
+                } else {
+                    displayPinData();
+                }
+
+                hideProgress();
+                alert(`成功识别 ${pastedPins.length} 个引脚！`);
+
+            } catch (error) {
+                hideProgress();
+                console.error('提取失败:', error);
+                alert('提取失败: ' + error.message);
+            }
+        }
+
+        // 解析页码范围
+        function parsePageRange(rangeStr) {
+            if (!rangeStr) return [];
+            const pages = [];
+            const parts = rangeStr.split(',');
+            for (const part of parts) {
+                if (part.includes('-')) {
+                    const [start, end] = part.split('-').map(Number);
+                    for (let i = start; i <= end; i++) pages.push(i);
+                } else {
+                    pages.push(Number(part));
+                }
+            }
+            return pages;
+        }
+
+        // 显示引脚数据
+        function displayPinData() {
+            const tbody = document.querySelector('#pinTable tbody');
+            tbody.innerHTML = '';
+
+            pinData.forEach(pin => {
+                const row = document.createElement('tr');
+                const keys = Object.keys(pin);
+
+                keys.forEach((key, index) => {
+                    const cell = document.createElement('td');
+                    const value = pin[key];
+                    let input;
+
+                    if (key === 'Position') {
+                        input = document.createElement('select');
+                        const options = ['', 'TOP', 'TOP_REV', 'BOTTOM', 'BOTTOM_REV', 'LEFT', 'RIGHT'];
+                        const labels = {
+                            '': '',
+                            'TOP': 'TOP (升序)',
+                            'TOP_REV': 'TOP (降序)',
+                            'BOTTOM': 'BOTTOM (升序)',
+                            'BOTTOM_REV': 'BOTTOM (降序)',
+                            'LEFT': 'LEFT',
+                            'RIGHT': 'RIGHT'
+                        };
+                        options.forEach(opt => {
+                            const option = document.createElement('option');
+                            option.value = opt;
+                            option.textContent = labels[opt] || opt;
+                            if (value === opt) option.selected = true;
+                            input.appendChild(option);
+                        });
+                    } else {
+                        input = document.createElement('input');
+                        input.type = 'text';
+                        input.value = value;
+                    }
+
+                    input.addEventListener('change', function() {
+                        const rowIndex = Array.from(tbody.children).indexOf(row);
+                        pinData[rowIndex][key] = this.value;
+                    });
+
+                    cell.appendChild(input);
+                    row.appendChild(cell);
+                });
+
+                tbody.appendChild(row);
+            });
+        }
+
+        // 导出 Excel
+        function exportToExcel() {
+            if (pinData.length === 0) {
+                alert('没有数据可导出');
+                return;
+            }
+
+            const columnOrder = ['Number', 'Name', 'Type', 'Visible', 'Shape', 'PinGroup', 'Position', 'Section'];
+            const wsData = [columnOrder];
+
+            pinData.forEach(pin => {
+                const row = columnOrder.map(col => {
+                    let value = pin[col];
+                    if (col === 'Number') {
+                        return parseInt(value) || 0;
+                    }
+                    if (col === 'Position') {
+                        if (value === 'TOP_REV') value = 'TOP';
+                        if (value === 'BOTTOM_REV') value = 'BOTTOM';
+                    }
+                    return value || '';
+                });
+                wsData.push(row);
+            });
+
+            const csvContent = wsData.map(row => row.join(',')).join('\n');
+            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `chip_pinout_${new Date().getTime()}.csv`;
+            link.click();
+
+            alert('CSV 文件已导出！可以用 Excel 打开。');
+        }
+    </script>
+</body>
+</html>
