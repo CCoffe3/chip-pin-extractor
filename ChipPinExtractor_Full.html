@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>芯片引脚智能提取工具 Pro (PDF/图片/OCR)</title>
+    <title>芯片引脚智能提取工具 Pro v2 (增强表格识别)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- PDF.js -->
@@ -42,7 +42,6 @@
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        /* 表格样式优化 */
         .pin-table-container { max-height: 500px; overflow-y: auto; }
         .pin-table th { position: sticky; top: 0; background-color: #f8fafc; z-index: 10; }
         
@@ -73,9 +72,9 @@
         <div class="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white">
             <h1 class="text-2xl font-bold flex items-center gap-2">
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
-                芯片引脚智能提取工具 Pro
+                芯片引脚智能提取工具 Pro v2
             </h1>
-            <p class="mt-2 text-blue-100 text-sm">支持 PDF (文本/扫描) & 图片 OCR 识别 · 拖拽上传 · 自动解析 · Excel 导出</p>
+            <p class="mt-2 text-blue-100 text-sm">增强版：优化 PDF 表格识别逻辑 · 支持 LT8619C 等复杂 datasheet</p>
         </div>
 
         <div class="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -93,7 +92,7 @@
                                 <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
                             <p class="mt-2 text-sm text-gray-600">拖拽文件到这里，或点击选择</p>
-                            <p class="mt-1 text-xs text-gray-500">支持 PDF, JPG, PNG (首次加载需等待)</p>
+                            <p class="mt-1 text-xs text-gray-500">针对 Datasheet 表格优化</p>
                         </div>
                     </div>
                     
@@ -123,10 +122,11 @@
                         </div>
                         <div class="flex items-center gap-2">
                             <input type="checkbox" id="forceOcr" class="rounded text-blue-600 focus:ring-blue-500">
-                            <label for="forceOcr" class="text-sm text-gray-600">强制 OCR (用于文本 PDF 识别失败时)</label>
+                            <label for="forceOcr" class="text-sm text-gray-600">强制 OCR (用于扫描件)</label>
                         </div>
-                        <div class="text-xs text-gray-500 bg-yellow-50 p-2 rounded border border-yellow-100">
-                            💡 提示：如果是扫描版 PDF 或图片，请确保网络连接正常以加载 OCR 引擎。
+                         <div class="flex items-center gap-2">
+                            <input type="checkbox" id="debugMode" class="rounded text-blue-600 focus:ring-blue-500">
+                            <label for="debugMode" class="text-sm text-gray-600">显示原始文本 (调试用)</label>
                         </div>
                     </div>
                 </div>
@@ -165,7 +165,7 @@
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">序号</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">引脚号</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">引脚名称</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">类型</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">类型/功能</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">操作</th>
                             </tr>
                         </thead>
@@ -184,6 +184,12 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Debug Area -->
+        <div id="debugArea" class="hidden p-6 bg-gray-800 text-green-400 font-mono text-xs overflow-auto h-48 border-t border-gray-700">
+            <h4 class="text-white font-bold mb-2">原始提取文本 (Debug):</h4>
+            <pre id="debugText"></pre>
+        </div>
     </div>
 
     <div id="toast" class="toast">操作成功</div>
@@ -193,6 +199,7 @@
         let currentFile = null;
         let extractedData = [];
         let worker = null;
+        let rawTextBuffer = "";
 
         // --- DOM Elements ---
         const dropZone = document.getElementById('dropZone');
@@ -205,6 +212,8 @@
         const tableBody = document.getElementById('tableBody');
         const rowCountSpan = document.getElementById('rowCount');
         const toastEl = document.getElementById('toast');
+        const debugArea = document.getElementById('debugArea');
+        const debugText = document.getElementById('debugText');
 
         // --- Event Listeners for Drag & Drop ---
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -250,7 +259,6 @@
                 spinner.classList.add('hidden');
                 progressBarBg.classList.add('hidden');
                 
-                // Auto trigger process after short delay for better UX
                 setTimeout(() => processFile(), 500);
             }
         }
@@ -292,7 +300,15 @@
             progressBar.style.width = '0%';
             statusText.innerText = '正在初始化...';
             extractedData = [];
+            rawTextBuffer = "";
             tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">正在处理中...</td></tr>';
+            
+            // Debug toggle
+            if(document.getElementById('debugMode').checked) {
+                debugArea.classList.remove('hidden');
+            } else {
+                debugArea.classList.add('hidden');
+            }
         }
 
         function updateProgress(percent, text) {
@@ -311,29 +327,24 @@
             let fullText = "";
             let needsOcr = forceOcr;
 
-            // Step 1: Try extracting native text first
             if (!forceOcr) {
                 updateProgress(10, '尝试提取原生文本...');
-                for (let i = 1; i <= Math.min(totalPages, 5); i++) { // Limit to first 5 pages for preview
+                // Extract text from all pages for better context
+                for (let i = 1; i <= totalPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
                     const pageText = textContent.items.map(item => item.str).join(' ');
                     fullText += pageText + "\n";
-                    
-                    // If we found significant text, maybe we don't need OCR? 
-                    // But for chip pins, sometimes layout is complex. Let's assume if length > 50, it's good.
-                    if (fullText.length > 100 && !forceOcr) {
-                        // Heuristic: If we got text, we might still want to OCR if the text looks garbled or lacks numbers
-                        // For now, let's trust native text unless user forces OCR.
-                        needsOcr = false; 
-                    }
                 }
                 
-                if (fullText.trim().length < 20) {
+                // Heuristic: If we found "Pin Description" or similar headers, assume text is good
+                if (fullText.toLowerCase().includes("pin description") || fullText.toLowerCase().includes("pin#")) {
+                    needsOcr = false;
+                } else if (fullText.trim().length < 50) {
                     needsOcr = true;
                     updateProgress(20, '原生文本过少，自动切换至 OCR 模式...');
                 } else {
-                    updateProgress(20, '原生文本提取完成，正在解析...');
+                     updateProgress(20, '原生文本提取完成，正在解析表格...');
                 }
             } else {
                 needsOcr = true;
@@ -341,21 +352,18 @@
 
             if (needsOcr) {
                 updateProgress(20, '启动 OCR 引擎 (这可能比较慢)...');
-                // Initialize Tesseract
                 if (!worker) {
                     worker = await Tesseract.createWorker(lang);
                 } else {
                     await worker.reinitialize(lang);
                 }
 
-                // Convert PDF pages to images and OCR
-                // Limit to first 3 pages to avoid browser crash on large PDFs in this demo
-                const pagesToProcess = Math.min(totalPages, 3);
+                const pagesToProcess = Math.min(totalPages, 5); // Limit for demo speed
                 
                 for (let i = 1; i <= pagesToProcess; i++) {
                     updateProgress(20 + ((i-1)/pagesToProcess)*70, `正在识别第 ${i}/${pagesToProcess} 页...`);
                     const page = await pdf.getPage(i);
-                    const viewport = page.getViewport({ scale: 2.0 }); // High scale for better OCR
+                    const viewport = page.getViewport({ scale: 2.5 }); // Higher scale for tables
                     
                     const canvas = document.createElement('canvas');
                     const context = canvas.getContext('2d');
@@ -373,6 +381,10 @@
                 updateProgress(90, 'OCR 完成，正在解析数据...');
             }
 
+            rawTextBuffer = fullText;
+            if(document.getElementById('debugMode').checked) {
+                debugText.textContent = fullText.substring(0, 2000) + "...(truncated)";
+            }
             parseTextToData(fullText);
         }
 
@@ -396,37 +408,88 @@
             worker = null;
             
             updateProgress(90, '识别完成，正在解析数据...');
+            rawTextBuffer = text;
+            if(document.getElementById('debugMode').checked) {
+                debugText.textContent = text;
+            }
             parseTextToData(text);
         }
 
-        // --- Data Parsing Logic (Heuristic) ---
+        // --- ENHANCED Data Parsing Logic ---
         function parseTextToData(text) {
             extractedData = [];
-            const lines = text.split(/\n+/);
             
-            // Regex patterns
-            // Look for lines that look like: "1 VCC", "2 GND", "3 TX", "Pin 1: Name"
-            const pinPattern = /(?:Pin\s*)?(\d{1,3})\s*[:\-\.]?\s*([A-Z0-9_\/\-]+)/i;
-            // Look for lines with just number and short name at start
-            const simplePattern = /^(\d{1,3})\s+([A-Z][A-Za-z0-9_]{1,10})/;
+            // Strategy 1: Look for specific table headers common in datasheets
+            // Keywords that indicate the start of a pin table
+            const headers = ["PIN#", "PIN NO", "NO.", "NAME", "TYPE", "DIR", "FUNCTION", "DESCRIPTION"];
+            let startIndex = -1;
+            
+            // Find the best starting point (where most headers appear close together)
+            // For simplicity in this version, we just look for "PIN#" or "NAME" followed by numbers
+            const lines = text.split(/\n+/);
+            let inTable = false;
+            let bufferTokens = [];
 
-            lines.forEach(line => {
-                line = line.trim();
-                if (!line) return;
+            // Normalize text: replace multiple spaces with single space, remove weird chars
+            const cleanText = text.replace(/[^\x20-\x7E\u4e00-\u9fa5\n]/g, ' ').replace(/\s+/g, ' ');
 
-                let match = line.match(pinPattern);
-                if (!match) match = line.match(simplePattern);
+            // Regex to find potential pin entries: Number followed by Name
+            // Matches: "1 VCCA18", "2 RXC-", "14, 72 NC"
+            // We scan the whole text for patterns that look like Pin Definitions
+            
+            // Pattern A: Standard "Number Name Type Function"
+            // We look for sequences where a number is followed by a capitalized word
+            const pinPattern = /(?:^|\s)(\d{1,3})\s+([A-Z][A-Za-z0-9_\-\/\.]+)\s+([A-Z]{2,10}|N\/A|I\/O|OD|I|O|PG|Analog|LVTTL)/gi;
+            
+            let match;
+            const foundPins = new Set(); // To avoid duplicates
 
-                if (match) {
-                    const pinNum = parseInt(match[1]);
-                    const pinName = match[2].replace(/[^A-Za-z0-9_]/g, ''); // Clean special chars
-                    
-                    // Avoid duplicates
-                    if (!extractedData.some(d => d.number === pinNum)) {
+            while ((match = pinPattern.exec(cleanText)) !== null) {
+                const pinNumStr = match[1];
+                const pinName = match[2];
+                const typeHint = match[3];
+
+                // Validation: Pin number should be reasonable (1-200)
+                const pinNum = parseInt(pinNumStr);
+                if (pinNum < 1 || pinNum > 200) continue;
+
+                // Avoid duplicates (e.g. if the text repeats)
+                const uniqueKey = `${pinNum}-${pinName}`;
+                if (foundPins.has(uniqueKey)) continue;
+                foundPins.add(uniqueKey);
+
+                // Determine Type/Dir based on hint
+                let type = "Unknown";
+                if (['I', 'O', 'I/O', 'OD', 'N/A', 'PG', 'Analog', 'LVTTL'].includes(typeHint.toUpperCase())) {
+                    type = typeHint.toUpperCase();
+                }
+
+                extractedData.push({
+                    number: pinNum,
+                    name: pinName,
+                    type: type,
+                    visible: true,
+                    shape: 'Round',
+                    pinGroup: 'Main',
+                    position: 'Auto',
+                    section: 'Default'
+                });
+            }
+
+            // Strategy 2: Fallback for messy tables (like "14, 72 NC")
+            // Look for pattern: Number, Number Name
+            const multiPinPattern = /(\d{1,3})\s*[,]\s*(\d{1,3})\s+([A-Z][A-Za-z0-9_]+)/gi;
+            while ((match = multiPinPattern.exec(cleanText)) !== null) {
+                const p1 = parseInt(match[1]);
+                const p2 = parseInt(match[2]);
+                const name = match[3];
+                
+                [p1, p2].forEach(p => {
+                    if (p >= 1 && p <= 200 && !extractedData.some(d => d.number === p)) {
                         extractedData.push({
-                            number: pinNum,
-                            name: pinName,
-                            type: 'Unknown',
+                            number: p,
+                            name: name,
+                            type: "Shared",
                             visible: true,
                             shape: 'Round',
                             pinGroup: 'Main',
@@ -434,31 +497,30 @@
                             section: 'Default'
                         });
                     }
-                }
-            });
+                });
+            }
 
-            // Fallback: If regex fails completely, try to find any numbers and following words
+            // Sort immediately after extraction
+            extractedData.sort((a, b) => a.number - b.number);
+            
             if (extractedData.length === 0) {
-                const rawTokens = text.split(/\s+/);
-                for (let i = 0; i < rawTokens.length - 1; i++) {
-                    const num = parseInt(rawTokens[i]);
-                    if (!isNaN(num) && num > 0 && num < 200) {
-                        const nextToken = rawTokens[i+1];
-                        if (nextToken && /^[A-Za-z]/.test(nextToken) && nextToken.length < 15) {
-                             if (!extractedData.some(d => d.number === num)) {
-                                extractedData.push({
-                                    number: num,
-                                    name: nextToken.replace(/[^A-Za-z0-9_]/g, ''),
-                                    type: 'Unknown',
-                                    visible: true,
-                                    shape: 'Round',
-                                    pinGroup: 'Main',
-                                    position: 'Auto',
-                                    section: 'Default'
-                                });
-                             }
-                        }
-                    }
+                // Last resort: Try to find any number followed by a short word in the whole text
+                const loosePattern = /\b(\d{1,2})\s+([A-Z]{2,8})\b/g;
+                while ((match = loosePattern.exec(cleanText)) !== null) {
+                     const pinNum = parseInt(match[1]);
+                     const name = match[2];
+                     if (!extractedData.some(d => d.number === pinNum) && pinNum > 0 && pinNum < 100) {
+                         extractedData.push({
+                            number: pinNum,
+                            name: name,
+                            type: "Detected",
+                            visible: true,
+                            shape: 'Round',
+                            pinGroup: 'Main',
+                            position: 'Auto',
+                            section: 'Default'
+                        });
+                     }
                 }
             }
         }
@@ -466,13 +528,13 @@
         // --- Rendering & Actions ---
         function renderTable() {
             if (extractedData.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">未识别到有效的引脚数据，请尝试更换图片或检查文件清晰度。</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">未识别到有效的引脚数据。<br>提示：尝试勾选"强制 OCR"或检查 PDF 是否为扫描版。</td></tr>';
                 rowCountSpan.innerText = '共 0 行数据';
                 return;
             }
 
             tableBody.innerHTML = '';
-            extractedData.sort((a, b) => a.number - b.number);
+            // Data is already sorted in parseTextToData
 
             extractedData.forEach((item, index) => {
                 const tr = document.createElement('tr');
@@ -480,16 +542,16 @@
                 tr.innerHTML = `
                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${index + 1}</td>
                     <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
-                        <input type="number" value="${item.number}" onchange="updateData(${index}, 'number', this.value)" class="w-16 border border-gray-300 rounded px-1 py-0.5 text-xs">
+                        <input type="number" value="${item.number}" onchange="updateData(${index}, 'number', this.value)" class="w-16 border border-gray-300 rounded px-1 py-0.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
                     </td>
                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        <input type="text" value="${item.name}" onchange="updateData(${index}, 'name', this.value)" class="w-full border border-gray-300 rounded px-1 py-0.5 text-xs">
+                        <input type="text" value="${item.name}" onchange="updateData(${index}, 'name', this.value)" class="w-full border border-gray-300 rounded px-1 py-0.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
                     </td>
                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                        <input type="text" value="${item.type}" onchange="updateData(${index}, 'type', this.value)" class="w-24 border border-gray-300 rounded px-1 py-0.5 text-xs">
+                        <input type="text" value="${item.type}" onchange="updateData(${index}, 'type', this.value)" class="w-24 border border-gray-300 rounded px-1 py-0.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
                     </td>
                     <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                        <button onclick="deleteRow(${index})" class="text-red-600 hover:text-red-900 text-xs">删除</button>
+                        <button onclick="deleteRow(${index})" class="text-red-600 hover:text-red-900 text-xs font-medium">删除</button>
                     </td>
                 `;
                 tableBody.appendChild(tr);
@@ -517,8 +579,10 @@
             currentFile = null;
             fileInput.value = '';
             extractedData = [];
+            rawTextBuffer = "";
             renderTable();
             statusArea.classList.add('hidden');
+            debugArea.classList.add('hidden');
             showToast('🗑️ 已清空所有数据');
         };
 
@@ -528,12 +592,10 @@
                 return;
             }
             
-            // Prepare data for Excel
             const exportData = extractedData.map(item => ({
                 "Pin Number": item.number,
                 "Pin Name": item.name,
-                "Type": item.type,
-                "Position": item.position,
+                "Type/Dir": item.type,
                 "Group": item.pinGroup
             }));
 
