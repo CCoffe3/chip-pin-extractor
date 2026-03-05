@@ -399,7 +399,7 @@
 
             <div style="margin-bottom: 20px;">
                 <label for="pastedPinData">粘贴引脚数据（支持跨行识别）</label>
-                <textarea id="pastedPinData" placeholder="示例格式：
+                <textarea id="pastedPinData" rows="8" placeholder="示例格式：
 1 VCC
 2 GND
 3 GPIO
@@ -414,6 +414,7 @@ PIO/IrDA 25"></textarea>
                 <p style="font-size: 14px; color: var(--text-secondary);">支持 PDF、JPG、JPEG、PNG 格式</p>
                 <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png" multiple>
             </div>
+            <div id="fileList" style="margin-top: 10px; font-size: 14px; color: var(--text-secondary);"></div>
 
             <div id="progressSection" class="progress-section">
                 <div id="progressText" class="progress-item"></div>
@@ -501,6 +502,19 @@ PIO/IrDA 25"></textarea>
         function initDragAndDrop() {
             const dropZone = document.getElementById('dropZone');
             const fileInput = document.getElementById('fileInput');
+            const fileList = document.getElementById('fileList');
+
+            // 显示已选文件
+            function displayFiles() {
+                if (fileInput.files.length > 0) {
+                    const fileNames = Array.from(fileInput.files).map(f => f.name).join(', ');
+                    fileList.innerHTML = `<span style="color: var(--success-color);">✓ 已选择: ${fileNames}</span>`;
+                } else {
+                    fileList.innerHTML = '';
+                }
+            }
+
+            fileInput.addEventListener('change', displayFiles);
 
             dropZone.addEventListener('dragover', (e) => {
                 e.preventDefault();
@@ -516,10 +530,16 @@ PIO/IrDA 25"></textarea>
                 dropZone.classList.remove('active');
                 if (e.dataTransfer.files.length) {
                     fileInput.files = e.dataTransfer.files;
+                    displayFiles();
                 }
             });
 
-            dropZone.addEventListener('click', () => fileInput.click());
+            dropZone.addEventListener('click', (e) => {
+                // 防止点击文件列表时触发
+                if (e.target !== fileList && !fileList.contains(e.target)) {
+                    fileInput.click();
+                }
+            });
         }
 
         // 从 PDF 提取文本
