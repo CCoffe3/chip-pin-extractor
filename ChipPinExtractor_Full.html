@@ -3,571 +3,696 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>芯片引脚智能提取工具 Pro (PDF/图片/OCR)</title>
-    <!-- Tailwind CSS -->
+    <title>Pin Extractor Pro v2.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- PDF.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script>
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    </script>
-    <!-- Tesseract.js -->
-    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
-    <!-- SheetJS for Excel Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
+    <!-- 引入 html2canvas 用于截图 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    </script>
     <style>
-        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; }
-        .drop-zone {
-            border: 2px dashed #cbd5e1;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-        .drop-zone.drag-over {
-            border-color: #3b82f6;
-            background-color: #eff6ff;
-            transform: scale(1.01);
-        }
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3b82f6;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-            vertical-align: middle;
-            margin-right: 8px;
-        }
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
-        /* 表格样式优化 */
-        .pin-table-container { max-height: 500px; overflow-y: auto; }
-        .pin-table th { position: sticky; top: 0; background-color: #f8fafc; z-index: 10; }
-        
-        .toast {
-            visibility: hidden;
-            min-width: 250px;
-            background-color: #333;
-            color: #fff;
-            text-align: center;
-            border-radius: 4px;
-            padding: 12px;
-            position: fixed;
-            z-index: 50;
-            left: 50%;
-            bottom: 30px;
-            transform: translateX(-50%);
-            font-size: 14px;
-        }
+        .toast { visibility: hidden; min-width: 300px; background-color: #1e293b; color: #fff; text-align: center; border-radius: 6px; padding: 12px; position: fixed; z-index: 50; left: 50%; bottom: 30px; transform: translateX(-50%); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
         .toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
         @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
         @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+        
+        /* Chip Visualization Styles */
+        .chip-container {
+            position: relative;
+            width: 400px;
+            height: 400px;
+            margin: 0 auto;
+            background: #e2e8f0;
+            border-radius: 8px;
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+        }
+        .chip-body {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px; height: 200px;
+            background: #1e293b;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            z-index: 10;
+        }
+        .chip-body::after {
+            content: '';
+            position: absolute;
+            top: 4px; left: 4px;
+            width: 12px; height: 12px;
+            background: #fbbf24;
+            border-radius: 50%;
+        }
+        .pin-dot {
+            position: absolute;
+            width: 12px; height: 12px;
+            background: #94a3b8;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+            transition: all 0.2s;
+            z-index: 20;
+        }
+        .pin-dot:hover {
+            background: #3b82f6;
+            transform: translate(-50%, -50%) scale(1.5);
+            z-index: 30;
+        }
+        .pin-dot.active { background: #10b981; }
+        .pin-label {
+            position: absolute;
+            font-size: 10px;
+            color: #475569;
+            font-weight: 600;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+        /* Tooltip */
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            pointer-events: none;
+            display: none;
+            z-index: 40;
+        }
     </style>
 </head>
-<body class="p-6">
+<body class="p-4 md:p-6">
 
-    <div class="max-w-6xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
-        <!-- Header -->
-        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white">
-            <h1 class="text-2xl font-bold flex items-center gap-2">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
-                芯片引脚智能提取工具 Pro
-            </h1>
-            <p class="mt-2 text-blue-100 text-sm">支持 PDF (文本/扫描) & 图片 OCR 识别 · 拖拽上传 · 自动解析 · Excel 导出</p>
-        </div>
+    <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Left Column: Controls & Table -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Header -->
+            <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                <h1 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <span class="bg-blue-600 text-white text-xs px-2 py-1 rounded">Pro v2.0</span>
+                    Pin Extractor & Visualizer
+                </h1>
+                <p class="text-sm text-gray-500 mt-1">提取 · 可视化 · 导出 SVG/PNG/Excel</p>
+            </div>
 
-        <div class="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            <!-- Left Column: Input & Controls -->
-            <div class="lg:col-span-1 space-y-6">
-                
-                <!-- Drop Zone -->
-                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                    <h3 class="font-semibold text-gray-700 mb-3">📁 文件输入</h3>
-                    <div id="dropZone" class="drop-zone bg-white rounded-lg p-8 text-center cursor-pointer">
-                        <input type="file" id="fileInput" class="hidden" accept=".pdf,.jpg,.jpeg,.png,.PNG,.JPG,.JPEG">
-                        <div class="pointer-events-none">
-                            <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                                <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
-                            <p class="mt-2 text-sm text-gray-600">拖拽文件到这里，或点击选择</p>
-                            <p class="mt-1 text-xs text-gray-500">支持 PDF, JPG, PNG (首次加载需等待)</p>
-                        </div>
+            <!-- Input Area -->
+            <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="md:col-span-3">
+                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">页码范围</label>
+                        <input type="text" id="pageRange" value="7-9" class="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                     </div>
-                    
-                    <!-- Status -->
-                    <div id="statusArea" class="mt-4 hidden">
-                        <div class="flex items-center text-sm text-blue-600 font-medium">
-                            <div id="spinner" class="loader hidden"></div>
-                            <span id="statusText">准备就绪</span>
-                        </div>
-                        <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2 hidden" id="progressBarBg">
-                            <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
-                        </div>
+                    <div class="flex items-end">
+                        <label class="flex items-center gap-2 cursor-pointer bg-blue-50 px-4 py-2.5 rounded-lg border border-blue-100 w-full justify-center">
+                            <input type="checkbox" id="forceOcr" checked class="rounded text-blue-600">
+                            <span class="text-sm font-medium text-blue-800">OCR 模式</span>
+                        </label>
                     </div>
                 </div>
 
-                <!-- Settings -->
-                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                    <h3 class="font-semibold text-gray-700 mb-3">⚙️ 识别设置</h3>
-                    <div class="space-y-3">
-                        <div>
-                            <label class="block text-xs font-medium text-gray-500 mb-1">识别语言</label>
-                            <select id="langSelect" class="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2">
-                                <option value="chi_sim+eng">简体中文 + 英文 (推荐)</option>
-                                <option value="eng">仅英文</option>
-                                <option value="chi_sim">仅简体中文</option>
-                            </select>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <input type="checkbox" id="forceOcr" class="rounded text-blue-600 focus:ring-blue-500">
-                            <label for="forceOcr" class="text-sm text-gray-600">强制 OCR (用于文本 PDF 识别失败时)</label>
-                        </div>
-                        <div class="text-xs text-gray-500 bg-yellow-50 p-2 rounded border border-yellow-100">
-                            💡 提示：如果是扫描版 PDF 或图片，请确保网络连接正常以加载 OCR 引擎。
-                        </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">快速粘贴 (备用)</label>
+                    <div class="flex gap-2">
+                        <textarea id="pasteArea" rows="2" class="flex-1 border border-gray-300 rounded-lg p-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none" placeholder="或直接粘贴表格文本..."></textarea>
+                        <button onclick="processPaste()" class="bg-gray-800 hover:bg-gray-900 text-white px-4 rounded-lg text-sm font-medium transition">解析</button>
                     </div>
                 </div>
 
-                <!-- Actions -->
-                <div class="flex gap-2">
-                    <button onclick="processFile()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition shadow-md flex justify-center items-center">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
-                        开始提取
-                    </button>
-                    <button onclick="clearData()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 px-4 rounded-lg transition">
-                        清空
-                    </button>
+                <div id="dropZone" class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:bg-gray-50 hover:border-blue-400 cursor-pointer transition group">
+                    <input type="file" id="fileInput" class="hidden" accept=".pdf,.jpg,.png">
+                    <div class="space-y-2">
+                        <svg class="mx-auto h-8 w-8 text-gray-400 group-hover:text-blue-500 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                        <p class="text-sm text-gray-600 font-medium">点击上传 PDF / 图片</p>
+                    </div>
+                </div>
+
+                <button onclick="startProcess()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition shadow-md flex justify-center items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                    开始提取并生成视图
+                </button>
+
+                <!-- Status -->
+                <div id="statusArea" class="hidden bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center text-sm font-medium text-blue-700">
+                            <div id="spinner" class="loader mr-2"></div>
+                            <span id="statusText">处理中...</span>
+                        </div>
+                        <span id="percentText" class="text-xs text-gray-500 font-mono">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div id="progressBar" class="bg-blue-600 h-2 rounded-full transition-all" style="width: 0%"></div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Right Column: Results -->
-            <div class="lg:col-span-2 bg-gray-50 rounded-lg border border-gray-200 flex flex-col h-[600px]">
-                <div class="p-4 border-b border-gray-200 bg-white rounded-t-lg flex justify-between items-center">
-                    <h3 class="font-semibold text-gray-700">📊 提取结果预览</h3>
+            <!-- Data Table -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                    <h3 class="font-bold text-gray-700">数据列表</h3>
                     <div class="flex gap-2">
-                        <button onclick="sortPins()" class="text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded border border-indigo-200 transition">
-                            🔢 智能排序
-                        </button>
-                        <button onclick="exportToExcel()" class="text-xs bg-green-50 text-green-700 hover:bg-green-100 px-3 py-1.5 rounded border border-green-200 transition flex items-center gap-1">
-                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                            导出 Excel
-                        </button>
+                        <input type="text" id="searchBox" placeholder="搜索引脚..." class="border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-1 focus:ring-blue-500 outline-none" onkeyup="filterTable()">
+                        <select id="layoutMode" onchange="applyLayout()" class="border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-1 focus:ring-blue-500 outline-none">
+                            <option value="auto">自动均分</option>
+                            <option value="power_first">电源优先 (Top)</option>
+                            <option value="manual">手动模式</option>
+                        </select>
                     </div>
                 </div>
-                
-                <div class="flex-1 overflow-auto pin-table-container bg-white">
-                    <table class="min-w-full divide-y divide-gray-200 pin-table" id="resultTable">
-                        <thead class="bg-gray-50">
+                <div class="overflow-x-auto max-h-[400px]">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50 sticky top-0">
                             <tr>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">序号</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">引脚号</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">引脚名称</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">类型</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">操作</th>
+                                <th class="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase w-16">Pin #</th>
+                                <th class="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Name</th>
+                                <th class="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase w-24">Type</th>
+                                <th class="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase w-24">Side</th>
+                                <th class="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase w-16">Action</th>
                             </tr>
                         </thead>
-                        <tbody class="bg-white divide-y divide-gray-200" id="tableBody">
-                            <tr>
-                                <td colspan="5" class="px-4 py-8 text-center text-gray-400 text-sm">
-                                    暂无数据，请上传文件或拖拽文件到左侧区域
-                                </td>
-                            </tr>
+                        <tbody id="resultBody" class="bg-white divide-y divide-gray-200 text-sm">
+                            <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">暂无数据</td></tr>
                         </tbody>
                     </table>
                 </div>
-                <div class="p-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-500 flex justify-between">
-                    <span id="rowCount">共 0 行数据</span>
-                    <span>支持手动编辑单元格内容</span>
+                <div class="p-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-500 flex justify-between">
+                    <span id="countInfo">共 0 个引脚</span>
+                    <div class="flex gap-2">
+                        <button onclick="exportData('excel')" class="text-green-600 hover:underline">Excel</button>
+                        <button onclick="exportData('csv')" class="text-blue-600 hover:underline">CSV</button>
+                        <button onclick="exportImage()" class="text-purple-600 hover:underline">导出图片 (PNG)</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Visualization -->
+        <div class="lg:col-span-1">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 sticky top-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-gray-700">芯片视图预览</h3>
+                    <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Interactive</span>
+                </div>
+                
+                <div id="chipCanvas" class="chip-container">
+                    <div class="chip-body">
+                        <span id="chipNameDisplay">CHIP</span>
+                    </div>
+                    <!-- Pins will be injected here -->
+                    <div id="tooltip" class="tooltip"></div>
+                </div>
+
+                <div class="mt-6 space-y-3">
+                    <div class="flex items-center justify-between text-xs text-gray-600">
+                        <span class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-gray-400"></div> 普通信号</span>
+                        <span class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-green-500"></div> 电源/地</span>
+                        <span class="flex items-center gap-1"><div class="w-3 h-3 rounded-full bg-blue-500"></div> 选中</span>
+                    </div>
+                    <div class="p-3 bg-yellow-50 rounded-lg text-xs text-yellow-800 border border-yellow-100">
+                        💡 <strong>提示:</strong> 点击表格中的 "Side" 下拉框或视图中的点，可手动调整引脚位置。
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div id="toast" class="toast">操作成功</div>
+    <div id="toast" class="toast"></div>
 
     <script>
-        // --- Global State ---
-        let currentFile = null;
         let extractedData = [];
         let worker = null;
+        let tesseract = null;
+        let currentFile = null;
 
-        // --- DOM Elements ---
+        // --- Initialization ---
         const dropZone = document.getElementById('dropZone');
-        const fileInput = document.getElementById('fileInput');
-        const statusArea = document.getElementById('statusArea');
-        const statusText = document.getElementById('statusText');
-        const spinner = document.getElementById('spinner');
-        const progressBarBg = document.getElementById('progressBarBg');
-        const progressBar = document.getElementById('progressBar');
-        const tableBody = document.getElementById('tableBody');
-        const rowCountSpan = document.getElementById('rowCount');
-        const toastEl = document.getElementById('toast');
-
-        // --- Event Listeners for Drag & Drop ---
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, preventDefaults, false);
-        });
-
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false);
-        });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false);
-        });
-
-        dropZone.addEventListener('drop', handleDrop, false);
-        dropZone.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
-
-        function handleDrop(e) {
-            const dt = e.dataTransfer;
-            const files = dt.files;
-            handleFiles(files);
-        }
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => dropZone.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); }, false));
+        ['dragenter', 'dragover'].forEach(e => dropZone.addEventListener(e, () => dropZone.classList.add('bg-blue-50', 'border-blue-400'), false));
+        ['dragleave', 'drop'].forEach(e => dropZone.addEventListener(e, () => dropZone.classList.remove('bg-blue-50', 'border-blue-400'), false));
+        dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+        dropZone.addEventListener('click', () => document.getElementById('fileInput').click());
+        document.getElementById('fileInput').addEventListener('change', e => handleFiles(e.target.files));
 
         function handleFiles(files) {
-            if (files.length > 0) {
+            if (files.length) {
                 currentFile = files[0];
-                const fileName = currentFile.name;
-                const ext = fileName.split('.').pop().toLowerCase();
-                
-                if (!['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) {
-                    showToast('❌ 不支持的文件格式，请上传 PDF 或 图片 (JPG/PNG)');
-                    return;
-                }
-
-                statusArea.classList.remove('hidden');
-                statusText.innerText = `已选择：${fileName} (${(currentFile.size/1024).toFixed(1)} KB)`;
-                spinner.classList.add('hidden');
-                progressBarBg.classList.add('hidden');
-                
-                // Auto trigger process after short delay for better UX
-                setTimeout(() => processFile(), 500);
+                document.getElementById('statusArea').classList.remove('hidden');
+                document.getElementById('statusText').innerText = `已加载: ${currentFile.name}`;
             }
         }
 
-        // --- Core Processing Logic ---
-        async function processFile() {
-            if (!currentFile) {
-                showToast('⚠️ 请先选择或拖拽文件');
-                return;
-            }
+        async function loadTesseract() {
+            if (tesseract) return tesseract;
+            try {
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/tesseract.js@v4.0.2/dist/tesseract.min.js';
+                document.head.appendChild(script);
+                await new Promise((resolve, reject) => {
+                    script.onload = resolve;
+                    script.onerror = () => reject(new Error("Tesseract 加载失败"));
+                });
+                tesseract = window.Tesseract;
+                return tesseract;
+            } catch (e) { throw e; }
+        }
 
-            resetUI();
-            const forceOcr = document.getElementById('forceOcr').checked;
-            const lang = document.getElementById('langSelect').value;
-            const ext = currentFile.name.split('.').pop().toLowerCase();
+        async function startProcess() {
+            const pasteText = document.getElementById('pasteArea').value.trim();
+            if (pasteText) { processPaste(); return; }
+            if (!currentFile) { showToast("请先选择文件或粘贴文本"); return; }
+            processFile(currentFile);
+        }
+
+        async function processFile(file) {
+            const statusArea = document.getElementById('statusArea');
+            const statusText = document.getElementById('statusText');
+            const progressBar = document.getElementById('progressBar');
+            const percentText = document.getElementById('percentText');
+            
+            statusArea.classList.remove('hidden');
+            progressBar.style.width = '0%';
+            percentText.innerText = '0%';
+            extractedData = [];
+
+            const useOcr = document.getElementById('forceOcr').checked;
+            const pageRangeStr = document.getElementById('pageRange').value.trim();
 
             try {
-                if (ext === 'pdf') {
-                    await handlePdf(currentFile, forceOcr, lang);
-                } else {
-                    await handleImage(currentFile, lang);
-                }
+                const ext = file.name.split('.').pop().toLowerCase();
+                if (ext === 'pdf') await processPdf(file, useOcr, pageRangeStr, (p, msg) => {
+                    progressBar.style.width = `${p}%`;
+                    percentText.innerText = `${Math.round(p)}%`;
+                    statusText.innerText = msg;
+                });
+                else await processImage(file, (p, msg) => {
+                    progressBar.style.width = `${p}%`;
+                    percentText.innerText = `${Math.round(p)}%`;
+                    statusText.innerText = msg;
+                });
+
+                if (extractedData.length === 0) throw new Error("未识别到数据");
+
+                applyLayout(); // Auto layout
                 renderTable();
-                showToast('✅ 识别完成！');
-            } catch (error) {
-                console.error(error);
-                statusText.innerText = `❌ 错误：${error.message}`;
-                showToast(`❌ 处理失败：${error.message}`);
+                renderChipView();
+                showToast(`成功提取 ${extractedData.length} 个引脚`);
+
+            } catch (err) {
+                console.error(err);
+                statusText.innerText = "处理失败: " + err.message;
+                statusText.classList.add('text-red-600');
+                showToast("提取失败");
             } finally {
-                spinner.classList.add('hidden');
-                progressBarBg.classList.add('hidden');
+                if (worker) { await worker.terminate(); worker = null; }
             }
         }
 
-        function resetUI() {
-            statusArea.classList.remove('hidden');
-            spinner.classList.remove('hidden');
-            progressBarBg.classList.remove('hidden');
-            progressBar.style.width = '0%';
-            statusText.innerText = '正在初始化...';
-            extractedData = [];
-            tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">正在处理中...</td></tr>';
+        async function processPaste() {
+            const text = document.getElementById('pasteArea').value;
+            if (!text.trim()) return showToast("文本框为空");
+            document.getElementById('statusArea').classList.remove('hidden');
+            document.getElementById('statusText').innerText = "解析中...";
+            document.getElementById('progressBar').style.width = '100%';
+            parseLogic(text);
+            if (extractedData.length === 0) return showToast("解析失败");
+            applyLayout();
+            renderTable();
+            renderChipView();
+            showToast(`解析成功：${extractedData.length} 个引脚`);
         }
 
-        function updateProgress(percent, text) {
-            progressBar.style.width = `${percent}%`;
-            if(text) statusText.innerText = text;
-        }
-
-        // --- PDF Handling ---
-        async function handlePdf(file, forceOcr, lang) {
+        // --- Core Logic (Same as before, slightly optimized) ---
+        async function processPdf(file, useOcr, rangeStr, onProgress) {
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
-            const totalPages = pdf.numPages;
-            
-            updateProgress(5, `PDF 加载成功，共 ${totalPages} 页`);
+            let pages = [];
+            if (rangeStr) {
+                const parts = rangeStr.split(',');
+                parts.forEach(p => {
+                    const [start, end] = p.split('-').map(Number);
+                    if (end) for (let i = start; i <= end; i++) pages.push(i);
+                    else pages.push(start);
+                });
+            } else for (let i = 1; i <= pdf.numPages; i++) pages.push(i);
+            pages = pages.filter(p => p >= 1 && p <= pdf.numPages);
 
             let fullText = "";
-            let needsOcr = forceOcr;
-
-            // Step 1: Try extracting native text first
-            if (!forceOcr) {
-                updateProgress(10, '尝试提取原生文本...');
-                // 优化：遍历所有页面，而不仅仅是前5页，以确保能读取到第7-9页
-                for (let i = 1; i <= totalPages; i++) {
-                    const page = await pdf.getPage(i);
-                    const textContent = await page.getTextContent();
-                    // 优化：保留更多结构信息，用换行符分隔每个item，防止单词粘连
-                    const pageText = textContent.items.map(item => item.str).join(' ');
-                    fullText += pageText + "\n";
-                }
-                
-                // 简单的启发式判断：如果文本量太少，或者完全没有数字，可能需要OCR
-                // 但针对 LT8619C 这种文档，原生文本通常足够，除非是扫描版
-                if (fullText.trim().length < 50) {
-                    needsOcr = true;
-                    updateProgress(20, '原生文本过少，自动切换至 OCR 模式...');
-                } else {
-                    updateProgress(20, '原生文本提取完成，正在解析...');
+            if (useOcr) {
+                const Tess = await loadTesseract();
+                worker = await Tess.createWorker('eng');
+                for (let i = 0; i < pages.length; i++) {
+                    const pageNum = pages[i];
+                    onProgress(((i / pages.length) * 90), `OCR 第 ${pageNum}/${pages.length} 页...`);
+                    const page = await pdf.getPage(pageNum);
+                    const viewport = page.getViewport({ scale: 2.5 });
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = viewport.width; canvas.height = viewport.height;
+                    await page.render({ canvasContext: ctx, viewport }).promise;
+                    // Binarize
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const data = imageData.data;
+                    for (let j = 0; j < data.length; j += 4) {
+                        const avg = (data[j] + data[j + 1] + data[j + 2]) / 3;
+                        data[j] = data[j+1] = data[j+2] = avg > 180 ? 255 : 0;
+                    }
+                    ctx.putImageData(imageData, 0, 0);
+                    const { data: { text } } = await worker.recognize(canvas);
+                    fullText += text + "\n";
                 }
             } else {
-                needsOcr = true;
-            }
-
-            if (needsOcr) {
-                updateProgress(20, '启动 OCR 引擎 (这可能比较慢)...');
-                if (!worker) {
-                    worker = await Tesseract.createWorker(lang);
-                } else {
-                    await worker.reinitialize(lang);
+                onProgress(20, "原生文本提取...");
+                for (const pageNum of pages) {
+                    const page = await pdf.getPage(pageNum);
+                    const content = await page.getTextContent();
+                    fullText += content.items.map(item => item.str).join(' ') + "\n";
                 }
-
-                const pagesToProcess = totalPages; // 处理所有页面
-                
-                for (let i = 1; i <= pagesToProcess; i++) {
-                    updateProgress(20 + ((i-1)/pagesToProcess)*70, `正在识别第 ${i}/${pagesToProcess} 页...`);
-                    const page = await pdf.getPage(i);
-                    const viewport = page.getViewport({ scale: 2.0 }); 
-                    
-                    const canvas = document.createElement('canvas');
-                    const context = canvas.getContext('2d');
-                    canvas.height = viewport.height;
-                    canvas.width = viewport.width;
-
-                    await page.render({ canvasContext: context, viewport: viewport }).promise;
-                    
-                    const imgData = canvas.toDataURL('image/png');
-                    const { data: { text } } = await worker.recognize(imgData);
-                    fullText += text + "\n---PAGE BREAK---\n";
-                }
-                await worker.terminate();
-                worker = null;
-                updateProgress(90, 'OCR 完成，正在解析数据...');
             }
-
-            parseTextToData(fullText);
+            onProgress(95, "解析数据...");
+            parseLogic(fullText);
         }
 
-        // --- Image Handling ---
-        async function handleImage(file, lang) {
-            updateProgress(10, '启动 OCR 引擎...');
-            
-            worker = await Tesseract.createWorker(lang);
-            
-            updateProgress(30, '正在识别图片内容...');
-            
-            const { data: { text } } = await worker.recognize(file, {
-                logger: m => {
-                    if (m.status === 'recognizing text') {
-                        updateProgress(30 + (m.progress * 60), `识别进度：${Math.round(m.progress * 100)}%`);
-                    }
-                }
-            });
-
-            await worker.terminate();
-            worker = null;
-            
-            updateProgress(90, '识别完成，正在解析数据...');
-            parseTextToData(text);
+        async function processImage(file, onProgress) {
+            const Tess = await loadTesseract();
+            worker = await Tess.createWorker('eng');
+            onProgress(10, "识别图片...");
+            const { data: { text } } = await worker.recognize(file);
+            parseLogic(text);
         }
 
-        // --- OPTIMIZED Data Parsing Logic ---
-        function parseTextToData(text) {
+        function parseLogic(text) {
             extractedData = [];
-            
-            // 1. 预处理文本：清理乱码，统一空白字符
-            // 将多个空格或换行替换为单个空格，但保留明显的行结束符以便后续按行处理
-            // 针对PDF提取常见的 "14, 72" 或 "14,72" 情况做特殊预留
-            let lines = text.split(/\n+/);
-            
-            // 关键正则：匹配 "Pin# Name" 模式
-            // 解释：
-            // ^\s* : 行首空白
-            // (\d+(?:\s*,\s*\d+)*) : 捕获组1 - 引脚号，支持 "1", "14,72" 等格式
-            // \s+ : 至少一个空格分隔
-            // ([A-Z0-9_\/\-\.]+) : 捕获组2 - 引脚名，允许字母、数字、下划线、斜杠、连字符、点 (如 IIS_SD0/SPDIF, RESET_N)
-            // (?:\s+|$) : 后面跟着空格或行尾
-            const pinLineRegex = /^\s*(\d+(?:\s*,\s*\d+)*)\s+([A-Z][A-Z0-9_\/\-\.]*)(?:\s+|$)/i;
-
-            // 辅助正则：用于过滤掉明显不是引脚定义的行（如表头、纯功能描述）
-            // 如果一行以 "PIN#" 或 "Table" 或 "Figure" 开头，跳过
-            const skipHeaders = /^(PIN#|Table|Figure|Note|Version|Source|Sink)/i;
+            const lines = text.split(/\n/).map(l => l.trim()).filter(l => l.length > 2);
+            const standardRegex = /^(\d+)\s+([A-Z][A-Z0-9_\/\-\.]*)/i;
+            const mergedRegex = /^(\d+(?:\s*,\s*\d+)*)\s+([A-Z][A-Z0-9_\/\-\.]*)/i;
+            const globalScanRegex = /\b(\d+)\s+([A-Z][A-Z0-9_\/\-\.]{2,})\b/g;
+            const skipWords = ['Pin', 'Name', 'Type', 'Description', 'Table', 'Figure', 'Note', 'Rev', 'Date'];
 
             lines.forEach(line => {
-                line = line.trim();
-                if (!line || skipHeaders.test(line)) return;
-
-                // 尝试匹配主正则
-                let match = line.match(pinLineRegex);
-
+                if (skipWords.some(w => line.toLowerCase().startsWith(w.toLowerCase()))) return;
+                let match = line.match(mergedRegex);
+                if (match && match[1].includes(',')) {
+                    const pins = match[1].split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0 && n < 300);
+                    const name = match[2].replace(/[^A-Za-z0-9_]/g, '');
+                    if (name.length >= 2) pins.forEach(pin => addPin(pin, name));
+                    return;
+                }
+                match = line.match(standardRegex);
                 if (match) {
-                    const pinNumStr = match[1];
-                    const pinNameRaw = match[2];
-
-                    // 验证引脚名：必须看起来像个名字（至少2个字符，或以字母开头）
-                    // 防止误识别纯数字行或短词
-                    if (pinNameRaw.length < 2 && !/[A-Z]/.test(pinNameRaw)) return;
-
-                    // 处理多引脚情况 (如 "14,72")
-                    const pinNumbers = pinNumStr.split(/,\s*/).map(s => parseInt(s.trim()));
-
-                    pinNumbers.forEach(num => {
-                        if (!isNaN(num) && num > 0 && num < 200) { // 合理引脚范围
-                            // 检查是否已存在，避免重复
-                            if (!extractedData.some(d => d.number === num)) {
-                                // 清理名称中的非法字符（保留字母数字下划线斜杠）
-                                const cleanName = pinNameRaw.replace(/[^A-Za-z0-9_\/\-]/g, '');
-                                
-                                extractedData.push({
-                                    number: num,
-                                    name: cleanName,
-                                    type: 'Unknown', // 类型较难从纯文本流精确提取，暂定为Unknown，用户可手动改
-                                    visible: true,
-                                    shape: 'Round',
-                                    pinGroup: 'Main',
-                                    position: 'Auto',
-                                    section: 'Default'
-                                });
-                            }
-                        }
-                    });
+                    const pin = parseInt(match[1]);
+                    const name = match[2].replace(/[^A-Za-z0-9_]/g, '');
+                    if (pin > 0 && pin < 300 && name.length >= 2) addPin(pin, name);
                 }
             });
 
-            // 二次清洗：如果提取到的数据很少，尝试更宽松的模式
-            // 针对某些PDF提取后 "1 VCCA18" 变成 "1VCCA18" 的情况（虽然少见，但作为兜底）
-            if (extractedData.length < 5) {
-                const compactRegex = /(\d+)([A-Z][A-Z0-9_\/]+)/g;
+            if (extractedData.length === 0) {
                 let match;
-                while ((match = compactRegex.exec(text)) !== null) {
-                    const num = parseInt(match[1]);
-                    const name = match[2];
-                    if (num > 0 && num < 200 && !extractedData.some(d => d.number === num)) {
-                         extractedData.push({
-                            number: num,
-                            name: name,
-                            type: 'Unknown',
-                            visible: true,
-                            shape: 'Round',
-                            pinGroup: 'Main',
-                            position: 'Auto',
-                            section: 'Default'
-                        });
-                    }
+                while ((match = globalScanRegex.exec(text)) !== null) {
+                    const pin = parseInt(match[1]);
+                    const name = match[2].replace(/[^A-Za-z0-9_]/g, '');
+                    if (pin > 0 && pin < 300 && name.length >= 3 && !/^(Page|Figure|Table)/i.test(name)) addPin(pin, name);
                 }
             }
-        }
-
-        // --- Rendering & Actions ---
-        function renderTable() {
-            if (extractedData.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">未识别到有效的引脚数据。<br>提示：如果是扫描版PDF，请勾选"强制OCR"后重试。</td></tr>';
-                rowCountSpan.innerText = '共 0 行数据';
-                return;
-            }
-
-            tableBody.innerHTML = '';
             extractedData.sort((a, b) => a.number - b.number);
-
-            extractedData.forEach((item, index) => {
-                const tr = document.createElement('tr');
-                tr.className = "hover:bg-gray-50 transition";
-                tr.innerHTML = `
-                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${index + 1}</td>
-                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
-                        <input type="number" value="${item.number}" onchange="updateData(${index}, 'number', this.value)" class="w-16 border border-gray-300 rounded px-1 py-0.5 text-xs">
-                    </td>
-                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        <input type="text" value="${item.name}" onchange="updateData(${index}, 'name', this.value)" class="w-full border border-gray-300 rounded px-1 py-0.5 text-xs">
-                    </td>
-                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                        <input type="text" value="${item.type}" onchange="updateData(${index}, 'type', this.value)" class="w-24 border border-gray-300 rounded px-1 py-0.5 text-xs">
-                    </td>
-                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
-                        <button onclick="deleteRow(${index})" class="text-red-600 hover:text-red-900 text-xs">删除</button>
-                    </td>
-                `;
-                tableBody.appendChild(tr);
+            const seen = new Set();
+            extractedData = extractedData.filter(item => {
+                if (seen.has(item.number)) return false;
+                seen.add(item.number);
+                return true;
             });
-            
-            // 更新总引脚数显示
-            rowCountSpan.innerText = `共 ${extractedData.length} 行数据 (识别到 ${extractedData.length} 个 PIN)`;
         }
 
-        window.updateData = function(index, field, value) {
-            if (field === 'number') value = parseInt(value);
-            extractedData[index][field] = value;
-        };
+        function addPin(number, name) {
+            let type = "Signal";
+            if (/VCC|VDD|AVDD|DVDD|Power/i.test(name)) type = "Power";
+            else if (/GND|Ground|AGND|DGND/i.test(name)) type = "Ground";
+            else if (/DP|DN|P|N$/i.test(name)) type = "Diff";
+            
+            if (!extractedData.find(d => d.number === number)) {
+                extractedData.push({ number, name, type, position: 'Top' }); // Default Top
+            }
+        }
 
-        window.deleteRow = function(index) {
-            extractedData.splice(index, 1);
+        // --- Visualization & Layout Logic ---
+        function applyLayout() {
+            const mode = document.getElementById('layoutMode').value;
+            const total = extractedData.length;
+            if (total === 0) return;
+
+            if (mode === 'auto') {
+                const q = Math.ceil(total / 4);
+                extractedData.forEach((d, i) => {
+                    if (i < q) d.position = 'Top';
+                    else if (i < 2*q) d.position = 'Right';
+                    else if (i < 3*q) d.position = 'Bottom';
+                    else d.position = 'Left';
+                });
+            } else if (mode === 'power_first') {
+                // Put Power/Gnd on Top, others distributed
+                const powers = extractedData.filter(d => d.type === 'Power' || d.type === 'Ground');
+                const others = extractedData.filter(d => d.type !== 'Power' && d.type !== 'Ground');
+                
+                let idx = 0;
+                powers.forEach(d => { d.position = 'Top'; idx++; });
+                const remainingSides = ['Right', 'Bottom', 'Left'];
+                const perSide = Math.ceil(others.length / 3);
+                
+                others.forEach((d, i) => {
+                    if (i < perSide) d.position = 'Right';
+                    else if (i < 2*perSide) d.position = 'Bottom';
+                    else d.position = 'Left';
+                });
+            }
+            // Manual mode does nothing automatically
             renderTable();
-        };
+            renderChipView();
+        }
 
-        window.sortPins = function() {
-            extractedData.sort((a, b) => a.number - b.number);
-            renderTable();
-            showToast('🔢 已按引脚号排序');
-        };
+        function updatePinPosition(index, newPos) {
+            extractedData[index].position = newPos;
+            renderChipView();
+        }
 
-        window.clearData = function() {
-            currentFile = null;
-            fileInput.value = '';
-            extractedData = [];
-            renderTable();
-            statusArea.classList.add('hidden');
-            showToast('🗑️ 已清空所有数据');
-        };
-
-        window.exportToExcel = function() {
+        function renderTable() {
+            const tbody = document.getElementById('resultBody');
             if (extractedData.length === 0) {
-                showToast('⚠️ 没有数据可导出');
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400">无数据</td></tr>';
                 return;
             }
-            
-            // Prepare data for Excel
-            const exportData = extractedData.map(item => ({
-                "Pin Number": item.number,
-                "Pin Name": item.name,
-                "Type": item.type,
-                "Position": item.position,
-                "Group": item.pinGroup
-            }));
+            tbody.innerHTML = extractedData.map((d, i) => `
+                <tr class="hover:bg-blue-50 border-b last:border-0 group">
+                    <td class="px-4 py-2 font-mono font-bold text-blue-600">${d.number}</td>
+                    <td class="px-4 py-2 font-mono text-gray-800">${d.name}</td>
+                    <td class="px-4 py-2">
+                        <span class="px-2 py-0.5 rounded text-xs font-medium ${
+                            d.type === 'Power' ? 'bg-yellow-100 text-yellow-800' : 
+                            d.type === 'Ground' ? 'bg-gray-200 text-gray-800' : 
+                            'bg-blue-100 text-blue-800'
+                        }">${d.type}</span>
+                    </td>
+                    <td class="px-4 py-2">
+                        <select onchange="updatePinPosition(${i}, this.value)" class="border border-gray-300 rounded text-xs px-1 py-0.5 bg-white focus:ring-1 focus:ring-blue-500 outline-none">
+                            <option value="Top" ${d.position==='Top'?'selected':''}>Top</option>
+                            <option value="Right" ${d.position==='Right'?'selected':''}>Right</option>
+                            <option value="Bottom" ${d.position==='Bottom'?'selected':''}>Bottom</option>
+                            <option value="Left" ${d.position==='Left'?'selected':''}>Left</option>
+                        </select>
+                    </td>
+                    <td class="px-4 py-2">
+                        <button onclick="deletePin(${i})" class="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition">✕</button>
+                    </td>
+                </tr>
+            `).join('');
+            document.getElementById('countInfo').innerText = `共 ${extractedData.length} 个引脚`;
+        }
 
-            const ws = XLSX.utils.json_to_sheet(exportData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "PinInfo");
-            
-            const fileName = currentFile ? `ChipPins_${currentFile.name.split('.')[0]}.xlsx` : "ChipPins.xlsx";
-            XLSX.writeFile(wb, fileName);
-            showToast('📥 Excel 文件已下载');
-        };
+        function deletePin(index) {
+            extractedData.splice(index, 1);
+            applyLayout(); // Re-layout
+            showToast("引脚已删除");
+        }
 
-        function showToast(message) {
-            toastEl.innerText = message;
-            toastEl.className = "toast show";
-            setTimeout(() => { toastEl.className = toastEl.className.replace("show", ""); }, 3000);
+        function filterTable() {
+            const term = document.getElementById('searchBox').value.toLowerCase();
+            const rows = document.getElementById('resultBody').querySelectorAll('tr');
+            rows.forEach(row => {
+                const text = row.innerText.toLowerCase();
+                row.style.display = text.includes(term) ? '' : 'none';
+            });
+        }
+
+        function renderChipView() {
+            const container = document.getElementById('chipCanvas');
+            // Clear existing pins (keep chip-body and tooltip)
+            const existingPins = container.querySelectorAll('.pin-dot, .pin-label');
+            existingPins.forEach(el => el.remove());
+
+            const centerX = 200;
+            const centerY = 200;
+            const offset = 110; // Distance from center
+            const step = 180 / (Math.max(extractedData.filter(d=>d.position==='Top').length, 1) - 1 || 1); 
+
+            // Helper to place pins
+            const placePin = (d, angle, labelOffsetX, labelOffsetY) => {
+                const rad = (angle * Math.PI) / 180;
+                const x = centerX + offset * Math.cos(rad);
+                const y = centerY + offset * Math.sin(rad);
+                
+                // Dot
+                const dot = document.createElement('div');
+                dot.className = `pin-dot ${d.type === 'Power' || d.type === 'Ground' ? 'active' : ''}`;
+                dot.style.left = `${x}px`;
+                dot.style.top = `${y}px`;
+                dot.onclick = () => {
+                    // Cycle position on click
+                    const sides = ['Top', 'Right', 'Bottom', 'Left'];
+                    const next = sides[(sides.indexOf(d.position) + 1) % 4];
+                    updatePinPosition(extractedData.indexOf(d), next);
+                };
+                
+                // Tooltip events
+                dot.onmouseenter = (e) => showTooltip(e, d);
+                dot.onmousemove = (e) => moveTooltip(e);
+                dot.onmouseleave = hideTooltip;
+
+                // Label
+                const label = document.createElement('div');
+                label.className = 'pin-label';
+                label.innerText = d.number;
+                label.style.left = `${x + labelOffsetX}px`;
+                label.style.top = `${y + labelOffsetY}px`;
+
+                container.appendChild(dot);
+                container.appendChild(label);
+            };
+
+            // Calculate counts for spacing
+            const counts = { Top:0, Right:0, Bottom:0, Left:0 };
+            extractedData.forEach(d => counts[d.position]++);
+
+            let counters = { Top:0, Right:0, Bottom:0, Left:0 };
+
+            extractedData.forEach(d => {
+                const idx = counters[d.position]++;
+                const total = counts[d.position];
+                const span = total === 1 ? 0 : 180;
+                const stepAngle = total === 1 ? 0 : span / (total - 1);
+                
+                let angle, lx, ly;
+                if (d.position === 'Top') {
+                    angle = 180 - (idx * stepAngle); // 180 to 0
+                    lx = 0; ly = -20;
+                } else if (d.position === 'Right') {
+                    angle = 270 - (idx * stepAngle); // 270 to 90 (wait, right is 270 to 90? No. Right is -90 to 90? Standard: 0=Right, 90=Bottom, 180=Left, 270=Top. Let's stick to CSS degrees: 0=Right, 90=Down, 180=Left, 270=Up)
+                    // Correction for standard unit circle in CSS (0 is 3 o'clock):
+                    // Top: 270 -> 90 (via 0)? No. Top is 270. Left is 180. Bottom is 90. Right is 0/360.
+                    // Let's map manually:
+                    // Top: 180 to 0 (via 90? No). Top is Y- axis. Angle 270.
+                    // Let's use simple coordinates instead of angles for clarity.
+                }
+                
+                // Simplified Coordinate Logic
+                let x, y, lx, ly;
+                const gap = 200 / (total + 1);
+                const posVal = (idx + 1) * gap;
+
+                if (d.position === 'Top') {
+                    x = posVal; y = 90; lx = 0; ly = -15;
+                } else if (d.position === 'Bottom') {
+                    x = posVal; y = 310; lx = 0; ly = 15;
+                } else if (d.position === 'Left') {
+                    x = 90; y = posVal; lx = -25; ly = -5;
+                } else if (d.position === 'Right') {
+                    x = 310; y = posVal; lx = 15; ly = -5;
+                }
+
+                const dot = document.createElement('div');
+                dot.className = `pin-dot ${d.type === 'Power' || d.type === 'Ground' ? 'active' : ''}`;
+                dot.style.left = `${x}px`;
+                dot.style.top = `${y}px`;
+                dot.onclick = () => {
+                    const sides = ['Top', 'Right', 'Bottom', 'Left'];
+                    const next = sides[(sides.indexOf(d.position) + 1) % 4];
+                    updatePinPosition(extractedData.indexOf(d), next);
+                };
+                dot.onmouseenter = (e) => showTooltip(e, d);
+                dot.onmousemove = (e) => moveTooltip(e);
+                dot.onmouseleave = hideTooltip;
+
+                const label = document.createElement('div');
+                label.className = 'pin-label';
+                label.innerText = d.number;
+                label.style.left = `${x + lx}px`;
+                label.style.top = `${y + ly}px`;
+
+                container.appendChild(dot);
+                container.appendChild(label);
+            });
+        }
+
+        // Tooltip Logic
+        const tooltip = document.getElementById('tooltip');
+        function showTooltip(e, d) {
+            tooltip.style.display = 'block';
+            tooltip.innerHTML = `<strong>Pin ${d.number}</strong><br>${d.name}<br><span class="text-gray-300">${d.type}</span>`;
+            moveTooltip(e);
+        }
+        function moveTooltip(e) {
+            tooltip.style.left = (e.pageX + 10) + 'px';
+            tooltip.style.top = (e.pageY + 10) + 'px';
+        }
+        function hideTooltip() { tooltip.style.display = 'none'; }
+
+        // --- Export Functions ---
+        function exportData(type) {
+            if (!extractedData.length) return showToast("无数据");
+            if (type === 'excel') {
+                const ws = XLSX.utils.json_to_sheet(extractedData);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Pins");
+                XLSX.writeFile(wb, "PinMap_Pro.xlsx");
+            } else if (type === 'csv') {
+                const ws = XLSX.utils.json_to_sheet(extractedData);
+                const csv = XLSX.utils.sheet_to_csv(ws);
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = "PinMap_Pro.csv";
+                link.click();
+            }
+            showToast("导出成功");
+        }
+
+        function exportImage() {
+            if (!extractedData.length) return showToast("无数据可导出");
+            const element = document.getElementById('chipCanvas');
+            // Temporarily increase size for better quality
+            html2canvas(element, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = 'Chip_Pinout.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                showToast("图片已下载");
+            });
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.innerText = msg;
+            t.className = 'toast show';
+            setTimeout(() => t.className = 'toast', 3000);
         }
     </script>
 </body>
